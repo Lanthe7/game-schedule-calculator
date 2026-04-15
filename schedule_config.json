@@ -1,0 +1,35 @@
+{
+  "direction": "forward",
+  "baseDate": "2026-04-06",
+  "workdayRule": "double-rest",
+  "extraDays": 10,
+  "stages": [
+    { "id": "stg_1", "name": "原画", "days": 5, "enabled": true },
+    { "id": "stg_2", "name": "模型", "days": 8, "enabled": true },
+    { "id": "stg_3", "name": "绑定", "days": 3, "enabled": true },
+    { "id": "stg_4", "name": "动作", "days": 5, "enabled": true },
+    { "id": "stg_5", "name": "特效", "days": 4, "enabled": true },
+    { "id": "stg_6", "name": "程序联调", "days": 6, "enabled": true },
+    { "id": "stg_7", "name": "QA测试", "days": 3, "enabled": true }
+  ],
+  "dependencies": [
+    { "id": "dep_1", "fromId": "stg_1", "toId": "stg_2", "linkType": "FS", "gapDays": 0 },
+    { "id": "dep_2", "fromId": "stg_2", "toId": "stg_3", "linkType": "FS", "gapDays": 0 },
+    { "id": "dep_3", "fromId": "stg_3", "toId": "stg_4", "linkType": "FS", "gapDays": 0 },
+    { "id": "dep_4", "fromId": "stg_4", "toId": "stg_5", "linkType": "FS", "gapDays": 0 },
+    { "id": "dep_5", "fromId": "stg_5", "toId": "stg_6", "linkType": "FS", "gapDays": 0 },
+    { "id": "dep_6", "fromId": "stg_6", "toId": "stg_7", "linkType": "FS", "gapDays": 0 }
+  ],
+  "holidays": [
+    "2026-01-01", "2026-01-02", "2026-01-03",
+    "2026-02-14", "2026-02-15", "2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19", "2026-02-20",
+    "2026-04-04", "2026-04-05", "2026-04-06",
+    "2026-05-01", "2026-05-02", "2026-05-03", "2026-05-04", "2026-05-05",
+    "2026-06-19", "2026-06-20", "2026-06-21",
+    "2026-09-25", "2026-09-26", "2026-09-27",
+    "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"
+  ],
+  "workdayOverrides": [
+    "2026-01-04", "2026-02-11", "2026-02-22", "2026-04-08", "2026-04-26", "2026-05-09", "2026-06-28", "2026-09-19", "2026-10-10"
+  ]
+}

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>游戏研发排期计算工具</title>
+  <link rel="stylesheet" href="style.css?v=8">
+</head>
+<body>
+  <header class="app-header">
+    <h1>🎮 游戏研发排期计算工具</h1>
+    <p class="subtitle">自动计算各环节开始/结束时间，支持正推与倒推</p>
+  </header>
+
+  <main class="app-main">
+    <aside class="panel panel-input">
+      <h2 class="panel-title">📝 输入配置</h2>
+
+      <section class="card" id="sec-template">
+        <h3 class="card-title">📋 已保存的标效模板</h3>
+        <div class="template-bar">
+          <select id="template-select" class="template-select">
+            <option value="">-- 选择标效模板 --</option>
+          </select>
+          <button class="btn-sm btn-tpl-action" id="btn-load-tpl" title="加载标效模板">📥 加载</button>
+          <button class="btn-sm btn-tpl-action" id="btn-save-tpl" title="保存为标效模板">💾 保存</button>
+          <button class="btn-sm btn-tpl-action btn-danger-sm" id="btn-del-tpl" title="删除标效模板">🗑️</button>
+        </div>
+        <div class="tpl-select-hint" id="tpl-select-hint" style="display:none;"></div>
+      </section>
+
+      <section class="card" id="sec-basic">
+        <h3 class="card-title">基础设置</h3>
+        <div class="form-row">
+          <label>排期方式</label>
+          <div class="radio-group">
+            <label><input type="radio" name="direction" value="forward" checked> 正推（从开始日期算）</label>
+            <label><input type="radio" name="direction" value="backward"> 倒推（从上线日期算）</label>
+          </div>
+        </div>
+        <div class="form-row">
+          <label id="label-date">需求开始日期 <span class="required-mark">*</span></label>
+          <input type="date" id="base-date" onclick="this.showPicker ? this.showPicker() : null">
+        </div>
+        <div class="form-row">
+          <label>额外预留天数（工作日）<span style="font-weight:400;color:#94a3b8;font-size:12px">（选填）</span></label>
+          <p class="field-hint">💡 在所有环节完成后，额外预留的缓冲时间，用于应对联调、测试、返工等不确定因素。设为 0 表示不预留。</p>
+          <input type="number" id="extra-days" value="0" min="0">
+        </div>
+        <div class="form-row">
+          <label>期望结束日期 <span style="font-weight:400;color:#94a3b8;font-size:12px">（选填）</span></label>
+          <p class="field-hint">💡 设定期望完成日期，用于对比实际排期是否超期。留空则不进行对比分析。</p>
+          <input type="date" id="expected-end-date" onclick="this.showPicker ? this.showPicker() : null">
+        </div>
+      </section>
+
+      <section class="card" id="sec-workday">
+        <h3 class="card-title">工作日规则</h3>
+        <div class="radio-group vertical">
+          <label><input type="radio" name="workday" value="double-rest" checked> 双休 + 中国法定节假日</label>
+          <label><input type="radio" name="workday" value="single-rest"> 单休（周六加班）+ 中国法定节假日</label>
+        </div>
+      </section>
+
+      <section class="card" id="sec-stages">
+        <h3 class="card-title">流程环节
+          <div class="stage-actions">
+            <button class="btn-sm btn-add" id="btn-add-stage">+ 新增环节</button>
+            <button class="btn-sm btn-upload" id="btn-upload-img" title="上传图片识别环节">📷 图片识别</button>
+            <button class="btn-sm btn-upload" id="btn-upload-excel" title="上传Excel表格识别环节">📊 Excel导入</button>
+          </div>
+        </h3>
+        <p class="field-hint stage-hint">💡 拖拽左侧 ≡ 可调整环节顺序；每个环节可设置名称、工期和启停用状态。</p>
+        <div id="stage-list" class="stage-list"></div>
+        <div class="stage-add-bottom" id="btn-add-stage-bottom" title="点击新增环节">
+          <span class="stage-add-bottom-icon">＋</span>
+          <span class="stage-add-bottom-text">新增环节</span>
+        </div>
+        <input type="file" id="file-img" accept="image/*" style="display:none">
+        <input type="file" id="file-excel" accept=".xlsx,.xls,.csv" style="display:none">
+      </section>
+
+      <section class="card" id="sec-dependencies">
+        <h3 class="card-title">流程依赖关系
+          <div class="dep-title-actions">
+            <label class="dep-advanced-toggle" title="展开高级选项（连接方式）">
+              <input type="checkbox" id="chk-dep-advanced"> ⚙️ 高级
+            </label>
+            <button class="btn-sm btn-add" id="btn-add-dep">+ 添加依赖</button>
+          </div>
+        </h3>
+        <p class="field-hint">💡 设置环节之间的先后依赖，默认"做完A再做B"。开启「高级」可切换连接方式。</p>
+        <div id="dependency-list" class="dep-list-compact"></div>
+      </section>
+
+      <button class="btn-primary" id="btn-calc">🚀 计算排期</button>
+    </aside>
+
+    <!-- 输入→输出引导箭头 -->
+    <div class="panel-divider">
+      <div class="divider-arrow">
+        <div class="divider-line"></div>
+        <div class="divider-arrow-icon" id="divider-calc-btn" title="点击计算排期" style="cursor:pointer;">▶</div>
+        <div class="divider-label">计算结果</div>
+        <div class="divider-line"></div>
+      </div>
+    </div>
+
+    <section class="panel panel-output">
+      <h2 class="panel-title">📊 排期结果
+        <button class="btn-sm btn-save-record" id="btn-open-save-record" title="保存当前排期结果">💾 保存记录</button>
+      </h2>
+
+      <!-- 正在查看记录的提示横幅 -->
+      <div class="record-viewing-banner" id="record-viewing-banner" style="display:none;"></div>
+
+      <!-- 保存的记录列表 -->
+      <div class="card saved-records-card" id="sec-saved-records">
+        <h3 class="card-title">📁 已保存的排期结果 <span class="saved-records-count" id="saved-records-count"></span></h3>
+        <div id="saved-records-list" class="saved-records-list"></div>
+      </div>
+
+      <div class="card" id="sec-summary">
+        <h3 class="card-title">项目汇总
+          <label class="backward-toggle-label" id="backward-toggle-wrap">
+            <input type="checkbox" id="chk-backward"> 显示倒排对比结果
+          </label>
+        </h3>
+        <div class="dual-result-section">
+          <div class="dual-result-block dual-result-solo" id="forward-summary-block">
+            <div class="dual-result-label">📈 顺排结果</div>
+            <div id="summary-content" class="summary-content">
+              <p class="placeholder-text">👈 请在左侧配置后点击「计算排期」</p>
+            </div>
+          </div>
+          <div class="dual-result-block backward-section" id="backward-summary-block" style="display:none;">
+            <div class="dual-result-label">📉 倒排结果</div>
+            <div id="backward-summary-content" class="summary-content"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="sec-table">
+        <h3 class="card-title">时间明细表
+          <div class="export-actions">
+            <button class="btn-sm btn-export" id="btn-export-table-excel" title="导出为Excel">📊 导出Excel</button>
+            <button class="btn-sm btn-export" id="btn-export-table-img" title="另存为图片">🖼️ 保存图片</button>
+          </div>
+        </h3>
+        <div class="dual-result-section">
+          <div class="dual-result-block dual-result-solo" id="forward-table-block">
+            <div class="dual-result-label">📈 顺排明细</div>
+            <div id="table-content" class="table-wrapper">
+              <p class="placeholder-text">等待计算...</p>
+            </div>
+          </div>
+          <div class="dual-result-block backward-section" id="backward-table-block" style="display:none;">
+            <div class="dual-result-label">📉 倒排明细</div>
+            <div id="backward-table-content" class="table-wrapper"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="sec-gantt-forward">
+        <h3 class="card-title">
+          <span id="forward-gantt-label">📈 顺排甘特图</span>
+          <div class="gantt-zoom-controls">
+            <button class="btn-sm btn-export" id="btn-export-fwd-gantt-excel" title="导出为Excel">📊 导出Excel</button>
+            <button class="btn-sm btn-export" id="btn-export-fwd-gantt-img" title="另存为图片">🖼️ 保存图片</button>
+            <span class="zoom-divider">|</span>
+            <button class="btn-sm" id="btn-fwd-zoom-out">−</button>
+            <span id="fwd-zoom-level">100%</span>
+            <button class="btn-sm" id="btn-fwd-zoom-in">+</button>
+            <button class="btn-sm" id="btn-fwd-zoom-reset">重置</button>
+            <span class="zoom-divider">|</span>
+            <button class="btn-sm btn-fullscreen" id="btn-fwd-gantt-fullscreen" title="全屏查看">⛶ 展开</button>
+          </div>
+        </h3>
+        <p class="gantt-drag-tip" id="gantt-drag-tip" style="display:none;">💡 拖拽色条左右边缘可调整开始/结束时间；在空白区域拖选可快速设定日期范围；调整后自动同步到左侧工期和排期结果</p>
+        <div id="gantt-content" class="gantt-wrapper">
+          <p class="placeholder-text">等待计算...</p>
+        </div>
+      </div>
+
+      <div class="card backward-section" id="sec-gantt-backward" style="display:none;">
+        <h3 class="card-title">
+          <span id="backward-gantt-label">📉 倒排甘特图</span>
+          <div class="gantt-zoom-controls">
+            <button class="btn-sm btn-export" id="btn-export-bwd-gantt-excel" title="导出为Excel">📊 导出Excel</button>
+            <button class="btn-sm btn-export" id="btn-export-bwd-gantt-img" title="另存为图片">🖼️ 保存图片</button>
+            <span class="zoom-divider">|</span>
+            <button class="btn-sm" id="btn-bwd-zoom-out">−</button>
+            <span id="bwd-zoom-level">100%</span>
+            <button class="btn-sm" id="btn-bwd-zoom-in">+</button>
+            <button class="btn-sm" id="btn-bwd-zoom-reset">重置</button>
+            <span class="zoom-divider">|</span>
+            <button class="btn-sm btn-fullscreen" id="btn-bwd-gantt-fullscreen" title="全屏查看">⛶ 展开</button>
+          </div>
+        </h3>
+        <div id="backward-gantt-content" class="gantt-wrapper"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-overlay" id="modal-stage" style="display:none;">
+    <div class="modal modal-add-stage">
+      <div class="modal-add-stage-header">
+        <span class="modal-add-stage-icon">📌</span>
+        <h3>新增环节</h3>
+      </div>
+      <div class="modal-add-stage-body">
+        <div class="form-row">
+          <label>环节名称 <span class="required-mark">*</span></label>
+          <div class="stage-name-input-wrapper">
+            <div class="custom-select-container" id="stage-name-container">
+              <input type="text" id="new-stage-name" placeholder="输入或选择环节名称" autocomplete="off">
+              <button class="dropdown-toggle-btn" id="btn-toggle-dropdown" type="button">▼</button>
+              <div class="dropdown-list" id="stage-name-dropdown" style="display:none;"></div>
+            </div>
+            <button class="btn-sm btn-manage-options" id="btn-manage-stage-names" title="管理环节名称选项">⚙️</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>默认工期（工作日） <span class="required-mark">*</span></label>
+          <div class="stage-days-input-row">
+            <input type="number" id="new-stage-days" placeholder="例如：5" min="1">
+            <span class="stage-days-unit">天</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btn-stage-cancel">取消</button>
+        <button class="btn-primary" id="btn-stage-confirm">✓ 确认添加</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-manage-names" style="display:none;">
+    <div class="modal modal-manage-names">
+      <h3>管理环节名称选项</h3>
+      <p class="field-hint" style="margin-bottom:12px">💡 支持上下拖拽调整顺序；该窗口可以向下拉伸，方便同时查看更多选项。</p>
+      <div class="name-options-list" id="name-options-list"></div>
+      <div class="add-option-row">
+        <input type="text" id="new-option-name" placeholder="新增选项名称...">
+        <button class="btn-sm btn-add" id="btn-add-option">+ 添加</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" id="btn-close-manage-names">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-save-tpl" style="display:none;">
+    <div class="modal">
+      <h3>💾 保存为标效模板</h3>
+      <div class="form-row">
+        <label>模板名称</label>
+        <input type="text" id="tpl-name-input" placeholder="例如：角色制作标效模板">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btn-tpl-save-cancel">取消</button>
+        <button class="btn-primary" id="btn-tpl-save-confirm">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-ocr" style="display:none;">
+    <div class="modal">
+      <h3>📷 图片识别</h3>
+      <div id="ocr-content">
+        <div class="ocr-preview-area" id="ocr-preview-area">
+          <p class="placeholder-text">加载中...</p>
+        </div>
+        <div id="ocr-result-area" style="display:none;">
+          <p class="field-hint">💡 请检查识别结果，勾选需要导入的环节：</p>
+          <div id="ocr-result-list" class="ocr-result-list"></div>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="btn-ocr-cancel">取消</button>
+            <button class="btn-primary" id="btn-ocr-import">导入选中环节</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-excel" style="display:none;">
+    <div class="modal modal-wide">
+      <h3>📊 Excel 导入</h3>
+      <div id="excel-content">
+        <div id="excel-preview-area">
+          <p class="placeholder-text">解析中...</p>
+        </div>
+        <div id="excel-result-area" style="display:none;">
+          <p class="field-hint">💡 请检查识别结果，勾选需要导入的环节：</p>
+          <div id="excel-result-list" class="ocr-result-list"></div>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="btn-excel-cancel">取消</button>
+            <button class="btn-primary" id="btn-excel-import">导入选中环节</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-save-record" style="display:none;">
+    <div class="modal">
+      <h3>💾 保存排期记录</h3>
+      <div class="form-row">
+        <label>记录备注名称 <span class="required-mark">*</span></label>
+        <input type="text" id="record-name-input" placeholder="例如：角色A制作排期_v1">
+      </div>
+      <p class="field-hint">💡 最多保存 5 条记录。超出需先清理已有记录才能保存新的。</p>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btn-record-cancel">取消</button>
+        <button class="btn-primary" id="btn-record-confirm">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="app.js?v=17"></script>
+</body>
+</html>

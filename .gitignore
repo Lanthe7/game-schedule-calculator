@@ -1,0 +1,15 @@
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.codebuddy/
+
+# 打包产物
+*.zip
+*.rar
+
+# 子项目（资产命名工具独立仓库）
+game-asset-naming-tool/
