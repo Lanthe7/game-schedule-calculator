@@ -86,10 +86,10 @@
             <label class="dep-advanced-toggle" title="展开高级选项（连接方式）">
               <input type="checkbox" id="chk-dep-advanced"> ⚙️ 高级
             </label>
-            <button class="btn-sm btn-add" id="btn-add-dep">+ 添加依赖</button>
+            <button class="btn-sm btn-add" id="btn-add-dep" title="新增一条环节之间的先后关系">+ 添加关系</button>
           </div>
         </h3>
-        <p class="field-hint">💡 设置环节之间的先后依赖，默认"做完A再做B"。开启「高级」可切换连接方式。</p>
+        <p class="field-hint">💡 一条依赖关系表示“左侧环节会影响右侧环节”。默认是“做完A再做B”；开启「高级」可切换首→首、尾→尾等连接方式。</p>
         <div id="dependency-list" class="dep-list-compact"></div>
       </section>
 
@@ -320,6 +320,6 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

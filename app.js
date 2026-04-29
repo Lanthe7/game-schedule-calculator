@@ -759,6 +759,29 @@ function renderDependencies() {
   bindDepDragSort();
 }
 
+function findNextDependencyPair() {
+  const availableStages = stages.filter((s) => s.enabled);
+  if (availableStages.length < 2) return null;
+  const existingPairs = new Set(dependencies.map((d) => `${d.fromId}__${d.toId}`));
+  const candidates = [];
+
+  for (let i = 0; i < availableStages.length - 1; i++) {
+    candidates.push([availableStages[i], availableStages[i + 1]]);
+  }
+  availableStages.forEach((from) => {
+    availableStages.forEach((to) => {
+      if (from.id !== to.id) candidates.push([from, to]);
+    });
+  });
+
+  for (const [from, to] of candidates) {
+    if (existingPairs.has(`${from.id}__${to.id}`)) continue;
+    const testDeps = [...dependencies, { id: '__test__', fromId: from.id, toId: to.id, linkType: 'FS', gapDays: 0 }];
+    if (!hasCycle(testDeps)) return { from, to };
+  }
+  return null;
+}
+
 function bindDepEvents() {
   // 添加依赖按钮
   const addBtn = document.getElementById('btn-add-dep');
@@ -767,15 +790,15 @@ function bindDepEvents() {
     addBtn.parentNode.replaceChild(newBtn, addBtn);
     newBtn.addEventListener('click', () => {
       if (stages.length < 2) { showToast('至少需要 2 个环节才能添加依赖', 'warning'); return; }
-      const from = stages[0]; const to = stages.find((s) => s.id !== from.id);
-      if (!to) return;
-      if (dependencies.some((d) => d.fromId === from.id && d.toId === to.id)) {
-        showToast('该依赖关系已存在，请修改现有依赖或选择其他环节', 'warning'); return;
+      const pair = findNextDependencyPair();
+      if (!pair) {
+        showToast('没有可自动添加的依赖关系，请编辑已有依赖或删除后调整', 'warning');
+        return;
       }
       pushHistory();
-      dependencies.push({ id: `dep_custom_${++dependencyIdCounter}`, fromId: from.id, toId: to.id, linkType: 'FS', gapDays: 0 });
-      if (hasCycle()) { dependencies.pop(); dependencyIdCounter--; showToast('该依赖会形成循环，已阻止', 'error'); return; }
+      dependencies.push({ id: `dep_custom_${++dependencyIdCounter}`, fromId: pair.from.id, toId: pair.to.id, linkType: 'FS', gapDays: 0 });
       renderDependencies(); autoRunCalculation();
+      showToast(`已添加依赖：${pair.from.name} → ${pair.to.name}`);
     });
   }
   // 修改前置环节
