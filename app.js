@@ -1761,14 +1761,17 @@ function syncDirectionTexts() {
 }
 
 function bindStageModal() {
+  let suppressNextStageNameFocus = false;
+
   function openAddStageModal() {
     document.getElementById('new-stage-name').value = ''; document.getElementById('new-stage-days').value = '';
     renderStageNameDropdown(''); modal('modal-stage', true);
     setTimeout(() => {
       const nameInput = document.getElementById('new-stage-name');
-      nameInput.focus();
-      renderStageNameDropdown('');
-      toggleStageNameDropdown(true);
+      if (!nameInput) return;
+      suppressNextStageNameFocus = true;
+      nameInput.focus({ preventScroll: true });
+      toggleStageNameDropdown(false);
     }, 50);
   }
   document.getElementById('btn-add-stage').addEventListener('click', openAddStageModal);
@@ -1800,7 +1803,14 @@ function bindStageModal() {
   });
   const newStageNameInput = document.getElementById('new-stage-name');
   newStageNameInput.addEventListener('input', (e) => { renderStageNameDropdown(e.target.value); toggleStageNameDropdown(true); });
-  newStageNameInput.addEventListener('focus', (e) => { renderStageNameDropdown(e.target.value); toggleStageNameDropdown(true); });
+  newStageNameInput.addEventListener('focus', (e) => {
+    if (suppressNextStageNameFocus) {
+      suppressNextStageNameFocus = false;
+      return;
+    }
+    renderStageNameDropdown(e.target.value);
+    toggleStageNameDropdown(true);
+  });
   newStageNameInput.addEventListener('click', (e) => { renderStageNameDropdown(e.target.value); toggleStageNameDropdown(true); });
   document.getElementById('btn-manage-stage-names').addEventListener('click', () => { renderManageNameOptions(); modal('modal-manage-names', true); });
   document.getElementById('btn-close-manage-names').addEventListener('click', () => modal('modal-manage-names', false));
@@ -2085,7 +2095,7 @@ function bindCompareToggle() {
 }
 
 /* ============ 新手引导 ============ */
-const GUIDE_KEY = 'schedule_tool_guide_shown_v1';
+const GUIDE_KEY = 'schedule_tool_guide_shown_v2';
 const GUIDE_STEPS = [
   { target: '#sec-basic', title: '① 基础设置', desc: '在这里设置计算方向、需求开始日期等基础参数。需求开始日期为必填项。', position: 'right' },
   { target: '#sec-stages', title: '② 流程环节', desc: '配置每个制作环节的名称和工期。工期为必填项，可拖拽 ≡ 调整顺序。底部也有快捷新增入口。', position: 'right' },
@@ -2096,7 +2106,7 @@ const GUIDE_STEPS = [
   { target: '#sec-gantt-forward', title: '⑦ 甘特图', desc: '直观的可视化甘特图，可拖拽色条调整工期，支持缩放、导出和全屏查看。顺排和倒排各有独立的甘特图。', position: 'left' }
 ];
 
-let guideOverlay = null, guideHighlight = null, guideTooltip = null;
+let guideOverlay = null, guideHighlight = null, guideTooltip = null, guideActiveTarget = null;
 
 function initGuide() {
   if (localStorage.getItem(GUIDE_KEY)) return;
@@ -2106,14 +2116,13 @@ function initGuide() {
 function cleanupGuide() {
   [guideOverlay, guideHighlight, guideTooltip].forEach((el) => { if (el) el.remove(); });
   guideOverlay = guideHighlight = guideTooltip = null;
+  if (guideActiveTarget) guideActiveTarget.classList.remove('guide-target-active');
+  guideActiveTarget = null;
 }
 
 function showGuide(stepIdx = 0) {
   if (stepIdx >= GUIDE_STEPS.length) {
-    // 引导结束 - 淡出
-    if (guideOverlay) guideOverlay.classList.add('guide-fade-out');
-    if (guideHighlight) guideHighlight.style.opacity = '0';
-    if (guideTooltip) { guideTooltip.style.opacity = '0'; guideTooltip.style.transform = 'translateY(8px)'; }
+    if (guideTooltip) { guideTooltip.style.opacity = '0'; guideTooltip.style.transform = 'translateY(10px)'; }
     setTimeout(() => { cleanupGuide(); localStorage.setItem(GUIDE_KEY, '1'); showToast('🎉 引导完成！开始使用吧'); }, 400);
     return;
   }
@@ -2125,45 +2134,21 @@ function showGuide(stepIdx = 0) {
   // 滚动到目标元素
   targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  const isFirst = !guideOverlay;
-
   setTimeout(() => {
-    const rect = targetEl.getBoundingClientRect();
+    if (guideActiveTarget && guideActiveTarget !== targetEl) guideActiveTarget.classList.remove('guide-target-active');
+    guideActiveTarget = targetEl;
+    guideActiveTarget.classList.add('guide-target-active');
 
-    // 首次创建元素
-    if (isFirst) {
-      guideOverlay = document.createElement('div');
-      guideOverlay.className = 'guide-overlay';
-      document.body.appendChild(guideOverlay);
-
-      guideHighlight = document.createElement('div');
-      guideHighlight.className = 'guide-highlight';
-      document.body.appendChild(guideHighlight);
-
+    if (!guideTooltip) {
       guideTooltip = document.createElement('div');
       guideTooltip.className = 'guide-tooltip guide-tooltip-entering';
       document.body.appendChild(guideTooltip);
-
-      guideOverlay.addEventListener('click', () => showGuide(stepIdx + 1));
     }
 
-    // 高亮框标记"移动中"
-    guideHighlight.classList.add('guide-moving');
-
-    // 平滑移动高亮框到新位置
-    guideHighlight.style.top = `${rect.top + window.scrollY - 6}px`;
-    guideHighlight.style.left = `${rect.left + window.scrollX - 6}px`;
-    guideHighlight.style.width = `${rect.width + 12}px`;
-    guideHighlight.style.height = `${rect.height + 12}px`;
-
-    // tooltip 先淡出
     guideTooltip.classList.remove('guide-tooltip-visible');
     guideTooltip.classList.add('guide-tooltip-entering');
 
-    // 延迟后更新tooltip内容并淡入
     setTimeout(() => {
-      guideHighlight.classList.remove('guide-moving');
-
       guideTooltip.innerHTML = `
         <div class="guide-tooltip-title">${step.title}</div>
         <div class="guide-tooltip-desc">${step.desc}</div>
@@ -2176,38 +2161,10 @@ function showGuide(stepIdx = 0) {
         </div>
       `;
 
-      // 重新获取rect（可能因为滚动变化了）
-      const newRect = targetEl.getBoundingClientRect();
-      guideTooltip.style.left = '';
-      guideTooltip.style.right = '';
-      if (step.position === 'right') {
-        guideTooltip.style.top = `${newRect.top + window.scrollY}px`;
-        guideTooltip.style.left = `${newRect.right + window.scrollX + 16}px`;
-      } else {
-        guideTooltip.style.top = `${newRect.top + window.scrollY}px`;
-        guideTooltip.style.right = `${window.innerWidth - newRect.left - window.scrollX + 16}px`;
-      }
-
-      // 检查越界
       requestAnimationFrame(() => {
-        const tooltipRect = guideTooltip.getBoundingClientRect();
-        if (tooltipRect.right > window.innerWidth) {
-          guideTooltip.style.left = 'auto';
-          guideTooltip.style.right = '16px';
-        }
-        if (tooltipRect.bottom > window.innerHeight) {
-          guideTooltip.style.top = `${newRect.bottom + window.scrollY - tooltipRect.height}px`;
-        }
-        // 淡入
         guideTooltip.classList.remove('guide-tooltip-entering');
         guideTooltip.classList.add('guide-tooltip-visible');
       });
-
-      // 重新绑定overlay click（更新stepIdx闭包）
-      const newOverlay = guideOverlay.cloneNode(true);
-      guideOverlay.parentNode.replaceChild(newOverlay, guideOverlay);
-      guideOverlay = newOverlay;
-      guideOverlay.addEventListener('click', () => showGuide(stepIdx + 1));
 
       document.getElementById('guide-btn-next').addEventListener('click', () => showGuide(stepIdx + 1));
       document.getElementById('guide-btn-skip').addEventListener('click', () => {
@@ -2215,8 +2172,8 @@ function showGuide(stepIdx = 0) {
         localStorage.setItem(GUIDE_KEY, '1');
         showToast('已跳过引导。如需重新查看，可清除浏览器缓存。');
       });
-    }, isFirst ? 50 : 300);
-  }, isFirst ? 300 : 200);
+    }, 80);
+  }, 260);
 }
 
 function renderAll() { renderStages(); renderDependencies(); refreshTemplateSelect(document.getElementById('template-select')?.value || ''); }
@@ -2230,13 +2187,11 @@ function loadPresetFromURL() {
     if (!preset) return null;
     const json = JSON.parse(decodeURIComponent(atob(preset)));
     if (!json || !Array.isArray(json.stages) || json.stages.length === 0) return null;
-    // 覆盖全局状态
     stages = clone(json.stages);
     dependencies = clone(json.dependencies || []);
-    stageIdCounter = json.stageIdCounter || Math.max(100, ...stages.map(s => parseInt(String(s.id).replace(/\D/g, '')) || 0)) + 1;
-    dependencyIdCounter = json.dependencyIdCounter || Math.max(100, ...dependencies.map(d => parseInt(String(d.id).replace(/\D/g, '')) || 0)) + 1;
+    stageIdCounter = json.stageIdCounter || Math.max(100, ...stages.map((s) => parseInt(String(s.id).replace(/\D/g, ''), 10) || 0)) + 1;
+    dependencyIdCounter = json.dependencyIdCounter || Math.max(100, ...dependencies.map((d) => parseInt(String(d.id).replace(/\D/g, ''), 10) || 0)) + 1;
     normalizeDependencies();
-    // 同时写入 workspace 以持久化
     const settings = json.settings || {};
     setJSON(STORAGE_KEYS.workspace, { stages: clone(stages), dependencies: clone(dependencies), stageIdCounter, dependencyIdCounter, settings });
     return settings;
@@ -2249,7 +2204,7 @@ function loadPresetFromURL() {
 function init() {
   loadStageNameOptions();
   // 优先检查 URL 参数预填数据
-  let presetSettings = loadPresetFromURL();
+  const presetSettings = loadPresetFromURL();
   // 恢复上次保存的工作区状态
   const savedSettings = presetSettings || loadWorkspace();
   renderAll(); renderStageNameDropdown('');
