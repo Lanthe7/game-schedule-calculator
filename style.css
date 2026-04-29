@@ -514,8 +514,8 @@ select:focus {
 
 .toggle {
   position: relative;
-  width: 36px;
-  height: 20px;
+  width: 32px;
+  height: 18px;
   flex-shrink: 0;
 }
 .toggle input { opacity: 0; width: 0; height: 0; }
@@ -532,14 +532,14 @@ select:focus {
   position: absolute;
   left: 2px;
   top: 2px;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   background: #fff;
   border-radius: 50%;
   transition: transform 0.2s;
 }
 .toggle input:checked + .toggle-slider { background: var(--primary); }
-.toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(14px); }
 
 .stage-list { display: flex; flex-direction: column; gap: 6px; }
 
@@ -547,7 +547,7 @@ select:focus {
   background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   transition: opacity 0.2s, border-color 0.25s, box-shadow 0.25s, transform 0.15s;
 }
 .stage-item:hover {
@@ -565,12 +565,13 @@ select:focus {
 .stage-item-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .stage-name-input {
   flex: 1;
   min-width: 120px;
   font-weight: 700;
+  font-size: 13px !important;
   background: #fff;
 }
 
@@ -582,7 +583,7 @@ select:focus {
 }
 .stage-name-dropdown-wrap .stage-name-input {
   width: 100%;
-  padding-right: 28px;
+  padding: 7px 28px 7px 10px;
   cursor: pointer;
 }
 .stage-name-dropdown-btn {
@@ -647,8 +648,8 @@ select:focus {
 .stage-days-box {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 5px;
+  padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #fff;
@@ -657,14 +658,15 @@ select:focus {
 }
 .stage-days-box span,
 .stage-days-box em {
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
   white-space: nowrap;
 }
 .stage-days-box input {
-  width: 60px;
+  width: 54px;
   text-align: center;
-  padding: 4px 6px;
+  padding: 3px 5px;
+  font-size: 12px;
 }
 .stage-days-box input::placeholder {
   font-size: 10px;
@@ -953,15 +955,15 @@ select:focus {
 
 .dep-del-btn {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
   background: transparent;
   color: #94a3b8;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   border-radius: 6px;
@@ -989,15 +991,15 @@ select:focus {
 
 .drag-handle,
 .name-option-handle {
-  width: 24px;
-  min-width: 24px;
-  height: 28px;
+  width: 22px;
+  min-width: 22px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
   color: #94a3b8;
-  font-size: 16px;
+  font-size: 14px;
   border-radius: 6px;
   transition: color 0.15s, background 0.15s;
 }
@@ -1011,12 +1013,12 @@ select:focus {
 
 .stage-order,
 .stage-index {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--primary), #6366f1);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: center;
