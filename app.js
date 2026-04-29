@@ -73,11 +73,12 @@ const LINK_META = {
   FF: { label: '尾→尾', arrow: '⇇', fromAnchor: '尾', toAnchor: '尾', desc: '前置结束后，当前环节才能结束' },
   SF: { label: '首→尾', arrow: '←', fromAnchor: '首', toAnchor: '尾', desc: '前置开始后，当前环节才能结束' }
 };
-const STORAGE_KEYS = { templates: 'schedule_tool_templates_v2', stageNames: 'schedule_tool_stage_names_v2', savedRecords: 'schedule_tool_records_v1', workspace: 'schedule_tool_workspace_v1' };
+const STORAGE_KEYS = { templates: 'schedule_tool_templates_v2', stageNames: 'schedule_tool_stage_names_v2', stageNameAliases: 'schedule_tool_stage_name_aliases_v1', savedRecords: 'schedule_tool_records_v1', workspace: 'schedule_tool_workspace_v1' };
 
 let stages = clone(DEFAULT_STAGES);
 let dependencies = clone(DEFAULT_DEPENDENCIES);
 let stageNameOptions = [];
+let stageNameAliases = {};
 let stageIdCounter = 100;
 let dependencyIdCounter = 100;
 let ganttZoom = 1;
@@ -119,7 +120,7 @@ function getJSON(key, fallback) { try { const raw = localStorage.getItem(key); r
 function setJSON(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { showToast('本地存储失败', 'error'); return false; } }
 
 function createSnapshot() {
-  return { stages: clone(stages), dependencies: clone(dependencies), stageNameOptions: clone(stageNameOptions), stageIdCounter, dependencyIdCounter };
+  return { stages: clone(stages), dependencies: clone(dependencies), stageNameOptions: clone(stageNameOptions), stageNameAliases: clone(stageNameAliases), stageIdCounter, dependencyIdCounter };
 }
 function pushHistory() {
   if (isRestoringHistory) return;
@@ -132,6 +133,7 @@ function undoLastAction() {
   isRestoringHistory = true;
   stages = clone(snapshot.stages); dependencies = clone(snapshot.dependencies);
   stageNameOptions = clone(snapshot.stageNameOptions);
+  stageNameAliases = clone(snapshot.stageNameAliases || {});
   stageIdCounter = snapshot.stageIdCounter; dependencyIdCounter = snapshot.dependencyIdCounter;
   isRestoringHistory = false;
   renderAll(); autoRunCalculation(); showToast('已撤销上一步');
@@ -209,10 +211,68 @@ function buildTopologicalOrder(enabledStages, enabledDeps) {
 }
 
 function loadStageNameOptions() {
-  stageNameOptions = mergeUnique([...getJSON(STORAGE_KEYS.stageNames, []), ...DEFAULT_STAGE_NAME_OPTIONS, ...DEFAULT_STAGES.map((s) => s.name)]);
+  stageNameAliases = getJSON(STORAGE_KEYS.stageNameAliases, {});
+  const savedNames = getJSON(STORAGE_KEYS.stageNames, []).map(resolveStageNameAlias);
+  const defaultNames = DEFAULT_STAGE_NAME_OPTIONS.map(resolveStageNameAlias);
+  const defaultStageNames = DEFAULT_STAGES.map((s) => resolveStageNameAlias(s.name));
+  stageNameOptions = mergeUnique([...savedNames, ...defaultNames, ...defaultStageNames]);
   setJSON(STORAGE_KEYS.stageNames, stageNameOptions);
 }
 function saveStageNameOptions() { setJSON(STORAGE_KEYS.stageNames, stageNameOptions); }
+function saveStageNameAliases() { setJSON(STORAGE_KEYS.stageNameAliases, stageNameAliases); }
+function resolveStageNameAlias(name) {
+  const key = String(name || '').trim();
+  return stageNameAliases[key] || key;
+}
+function getStageNameAliasSource(name) {
+  const value = String(name || '').trim();
+  const pair = Object.entries(stageNameAliases).find(([, alias]) => alias === value);
+  return pair ? pair[0] : value;
+}
+function resolveStageTreeOptionName(parentName, childName = '') {
+  const parent = String(parentName || '').trim();
+  const child = String(childName || '').trim();
+  if (!child) return resolveStageNameAlias(parent);
+  const fullName = `${parent}-${child}`;
+  return stageNameAliases[fullName] || `${resolveStageNameAlias(parent)}-${child}`;
+}
+function getManagedDefaultNameSet() {
+  const names = new Set();
+  STAGE_NAME_TREE.forEach((item) => {
+    names.add(resolveStageTreeOptionName(item.name));
+    (item.children || []).forEach((child) => names.add(resolveStageTreeOptionName(item.name, child)));
+  });
+  return names;
+}
+function renameManagedStageName(oldName, newName) {
+  const from = String(oldName || '').trim();
+  const to = String(newName || '').trim();
+  if (!from || !to || from === to) return false;
+
+  const source = getStageNameAliasSource(from);
+  const isDefaultOption = DEFAULT_STAGE_NAME_OPTIONS.includes(source) || DEFAULT_STAGES.some((s) => s.name === source);
+  if (isDefaultOption) {
+    if (to === source) delete stageNameAliases[source];
+    else stageNameAliases[source] = to;
+    saveStageNameAliases();
+  }
+
+  const namesToReplace = new Set([from, source, stageNameAliases[source]].filter(Boolean));
+  stageNameOptions = mergeUnique(stageNameOptions.map((name) => (namesToReplace.has(name) ? to : resolveStageNameAlias(name))));
+  const changedStages = stages.reduce((count, stage) => {
+    if (!namesToReplace.has(stage.name)) return count;
+    stage.name = to;
+    return count + 1;
+  }, 0);
+  saveStageNameOptions();
+  if (changedStages) {
+    renderStages();
+    renderDependencies();
+    autoRunCalculation();
+    saveWorkspace();
+  }
+  return changedStages > 0;
+}
 
 /* ============ 工作区状态自动持久化 ============ */
 let _saveWorkspaceTimer = null;
@@ -222,6 +282,8 @@ function saveWorkspace() {
     setJSON(STORAGE_KEYS.workspace, {
       stages: clone(stages),
       dependencies: clone(dependencies),
+      stageNameOptions: clone(stageNameOptions),
+      stageNameAliases: clone(stageNameAliases),
       stageIdCounter,
       dependencyIdCounter,
       settings: typeof collectSettings === 'function' ? collectSettings() : {}
@@ -233,6 +295,14 @@ function loadWorkspace() {
   if (!ws || !Array.isArray(ws.stages) || ws.stages.length === 0) return false;
   stages = clone(ws.stages);
   dependencies = clone(ws.dependencies || []);
+  if (ws.stageNameAliases) {
+    stageNameAliases = clone(ws.stageNameAliases);
+    saveStageNameAliases();
+  }
+  if (Array.isArray(ws.stageNameOptions)) {
+    stageNameOptions = mergeUnique([...ws.stageNameOptions.map(resolveStageNameAlias), ...stageNameOptions.map(resolveStageNameAlias), ...stages.map((s) => s.name)]);
+    saveStageNameOptions();
+  }
   stageIdCounter = ws.stageIdCounter || 100;
   dependencyIdCounter = ws.dependencyIdCounter || 100;
   normalizeDependencies();
@@ -253,17 +323,22 @@ function renderStageNameDropdown(keyword = '') {
   STAGE_NAME_CATEGORIES.forEach((cat, catIdx) => {
     let catHtml = '';
     cat.items.forEach((item) => {
-      const nameMatch = !q || item.name.toLowerCase().includes(q);
-      const childMatches = (item.children || []).filter((c) => !q || c.toLowerCase().includes(q) || item.name.toLowerCase().includes(q));
+      const optionName = resolveStageTreeOptionName(item.name);
+      const nameMatch = !q || optionName.toLowerCase().includes(q) || item.name.toLowerCase().includes(q);
+      const childMatches = (item.children || []).filter((c) => {
+        const childOptionName = resolveStageTreeOptionName(item.name, c);
+        return !q || childOptionName.toLowerCase().includes(q) || c.toLowerCase().includes(q) || item.name.toLowerCase().includes(q);
+      });
       if (!nameMatch && !childMatches.length) return;
 
-      catHtml += `<div class="dropdown-item dropdown-parent" data-option-name="${esc(item.name)}"><span>${esc(item.name)}</span>${item.children && item.children.length ? '<span class="dropdown-arrow">▸</span>' : ''}</div>`;
+      catHtml += `<div class="dropdown-item dropdown-parent" data-option-name="${esc(optionName)}"><span>${esc(optionName)}</span>${item.children && item.children.length ? '<span class="dropdown-arrow">▸</span>' : ''}</div>`;
       if (item.children && item.children.length) {
         const showChildren = nameMatch || childMatches.length;
         if (showChildren) {
           item.children.forEach((child) => {
-            if (q && !child.toLowerCase().includes(q) && !item.name.toLowerCase().includes(q)) return;
-            catHtml += `<div class="dropdown-item dropdown-child" data-option-name="${esc(item.name)}-${esc(child)}"><span class="dropdown-child-prefix">└</span> ${esc(child)}</div>`;
+            const childOptionName = resolveStageTreeOptionName(item.name, child);
+            if (q && !childOptionName.toLowerCase().includes(q) && !child.toLowerCase().includes(q) && !item.name.toLowerCase().includes(q)) return;
+            catHtml += `<div class="dropdown-item dropdown-child" data-option-name="${esc(childOptionName)}"><span class="dropdown-child-prefix">└</span> ${esc(childOptionName.replace(`${optionName}-`, ''))}</div>`;
           });
         }
       }
@@ -276,11 +351,7 @@ function renderStageNameDropdown(keyword = '') {
   });
 
   // 追加自定义选项（不在树中的）
-  const treeNames = new Set();
-  STAGE_NAME_TREE.forEach((item) => {
-    treeNames.add(item.name);
-    (item.children || []).forEach((c) => treeNames.add(`${item.name}-${c}`));
-  });
+  const treeNames = getManagedDefaultNameSet();
   const customOptions = stageNameOptions.filter((n) => !treeNames.has(n) && (!q || n.toLowerCase().includes(q)));
   if (customOptions.length) {
     if (html) html += '<div class="dropdown-divider"></div>';
@@ -306,8 +377,10 @@ function renderManageNameOptions() {
     input.addEventListener('change', (e) => {
       const idx = safeInt(e.target.dataset.nameInput, -1); const val = e.target.value.trim();
       if (idx < 0) return; if (!val) { showToast('选项名称不能为空', 'warning'); e.target.value = stageNameOptions[idx]; return; }
-      stageNameOptions[idx] = val; stageNameOptions = mergeUnique(stageNameOptions); saveStageNameOptions();
+      const oldName = stageNameOptions[idx];
+      const changedStages = renameManagedStageName(oldName, val);
       renderManageNameOptions(); renderStageNameDropdown(document.getElementById('new-stage-name').value || '');
+      showToast(changedStages ? '环节名称已同步更新' : '选项名称已更新');
     });
   });
   wrap.querySelectorAll('[data-name-delete]').forEach((btn) => {
@@ -353,7 +426,7 @@ function refreshTemplateSelect(selected = '') {
 }
 function saveCurrentTemplate(name) {
   const n = String(name || '').trim(); if (!n) { showToast('请输入模板名称', 'warning'); return; }
-  const payload = { name: n, updatedAt: Date.now(), data: { stages: clone(stages), dependencies: clone(dependencies), stageNameOptions: clone(stageNameOptions), stageIdCounter, dependencyIdCounter, settings: collectSettings() } };
+  const payload = { name: n, updatedAt: Date.now(), data: { stages: clone(stages), dependencies: clone(dependencies), stageNameOptions: clone(stageNameOptions), stageNameAliases: clone(stageNameAliases), stageIdCounter, dependencyIdCounter, settings: collectSettings() } };
   const tpls = getTemplates(); const idx = tpls.findIndex((t) => t.name === n);
   if (idx >= 0) tpls[idx] = payload; else tpls.push(payload);
   if (!saveTemplates(tpls)) return;
@@ -366,7 +439,9 @@ function loadSelectedTemplate() {
   if (!tpl) { showToast('模板不存在', 'error'); refreshTemplateSelect(); return; }
   pushHistory();
   stages = clone(tpl.data.stages || DEFAULT_STAGES); dependencies = clone(tpl.data.dependencies || DEFAULT_DEPENDENCIES);
-  stageNameOptions = mergeUnique([...(tpl.data.stageNameOptions || []), ...DEFAULT_STAGE_NAME_OPTIONS, ...stages.map((s) => s.name)]);
+  stageNameAliases = clone(tpl.data.stageNameAliases || stageNameAliases || {});
+  saveStageNameAliases();
+  stageNameOptions = mergeUnique([...(tpl.data.stageNameOptions || []).map(resolveStageNameAlias), ...DEFAULT_STAGE_NAME_OPTIONS.map(resolveStageNameAlias), ...stages.map((s) => s.name)]);
   stageIdCounter = tpl.data.stageIdCounter || 100; dependencyIdCounter = tpl.data.dependencyIdCounter || 100;
   normalizeDependencies(); saveStageNameOptions(); applySettings(tpl.data.settings || {});
   renderAll(); autoRunCalculation(); showToast(`已加载标效模板「${name}」`);
@@ -420,17 +495,22 @@ function renderStageCardDropdown(listEl, keyword, stageId) {
   STAGE_NAME_CATEGORIES.forEach((cat) => {
     let catHtml = '';
     cat.items.forEach((item) => {
-      const nameMatch = !q || item.name.toLowerCase().includes(q);
-      const childMatches = (item.children || []).filter((c) => !q || c.toLowerCase().includes(q) || item.name.toLowerCase().includes(q));
+      const optionName = resolveStageTreeOptionName(item.name);
+      const nameMatch = !q || optionName.toLowerCase().includes(q) || item.name.toLowerCase().includes(q);
+      const childMatches = (item.children || []).filter((c) => {
+        const childOptionName = resolveStageTreeOptionName(item.name, c);
+        return !q || childOptionName.toLowerCase().includes(q) || c.toLowerCase().includes(q) || item.name.toLowerCase().includes(q);
+      });
       if (!nameMatch && !childMatches.length) return;
 
-      catHtml += `<div class="dropdown-item dropdown-parent" data-card-option="${esc(item.name)}"><span>${esc(item.name)}</span>${item.children && item.children.length ? '<span class="dropdown-arrow">▸</span>' : ''}</div>`;
+      catHtml += `<div class="dropdown-item dropdown-parent" data-card-option="${esc(optionName)}"><span>${esc(optionName)}</span>${item.children && item.children.length ? '<span class="dropdown-arrow">▸</span>' : ''}</div>`;
       if (item.children && item.children.length) {
         const showChildren = nameMatch || childMatches.length;
         if (showChildren) {
           item.children.forEach((child) => {
-            if (q && !child.toLowerCase().includes(q) && !item.name.toLowerCase().includes(q)) return;
-            catHtml += `<div class="dropdown-item dropdown-child" data-card-option="${esc(item.name)}-${esc(child)}"><span class="dropdown-child-prefix">└</span> ${esc(child)}</div>`;
+            const childOptionName = resolveStageTreeOptionName(item.name, child);
+            if (q && !childOptionName.toLowerCase().includes(q) && !child.toLowerCase().includes(q) && !item.name.toLowerCase().includes(q)) return;
+            catHtml += `<div class="dropdown-item dropdown-child" data-card-option="${esc(childOptionName)}"><span class="dropdown-child-prefix">└</span> ${esc(childOptionName.replace(`${optionName}-`, ''))}</div>`;
           });
         }
       }
@@ -443,11 +523,7 @@ function renderStageCardDropdown(listEl, keyword, stageId) {
   });
 
   // 追加自定义选项
-  const treeNames = new Set();
-  STAGE_NAME_TREE.forEach((item) => {
-    treeNames.add(item.name);
-    (item.children || []).forEach((c) => treeNames.add(`${item.name}-${c}`));
-  });
+  const treeNames = getManagedDefaultNameSet();
   const customOptions = stageNameOptions.filter((n) => !treeNames.has(n) && (!q || n.toLowerCase().includes(q)));
   if (customOptions.length) {
     if (html) html += '<div class="dropdown-divider"></div>';
@@ -1516,6 +1592,7 @@ function saveCurrentRecord(name) {
       stages: clone(stages),
       dependencies: clone(dependencies),
       stageNameOptions: clone(stageNameOptions),
+      stageNameAliases: clone(stageNameAliases),
       stageIdCounter,
       dependencyIdCounter,
       settings: collectSettings()
@@ -1535,7 +1612,9 @@ function loadSavedRecord(idx) {
   pushHistory();
   stages = clone(record.data.stages || DEFAULT_STAGES);
   dependencies = clone(record.data.dependencies || DEFAULT_DEPENDENCIES);
-  stageNameOptions = mergeUnique([...(record.data.stageNameOptions || []), ...DEFAULT_STAGE_NAME_OPTIONS, ...stages.map((s) => s.name)]);
+  stageNameAliases = clone(record.data.stageNameAliases || stageNameAliases || {});
+  saveStageNameAliases();
+  stageNameOptions = mergeUnique([...(record.data.stageNameOptions || []).map(resolveStageNameAlias), ...DEFAULT_STAGE_NAME_OPTIONS.map(resolveStageNameAlias), ...stages.map((s) => s.name)]);
   stageIdCounter = record.data.stageIdCounter || 100;
   dependencyIdCounter = record.data.dependencyIdCounter || 100;
   normalizeDependencies(); saveStageNameOptions();
@@ -2187,13 +2266,17 @@ function loadPresetFromURL() {
     if (!preset) return null;
     const json = JSON.parse(decodeURIComponent(atob(preset)));
     if (!json || !Array.isArray(json.stages) || json.stages.length === 0) return null;
+    if (json.stageNameAliases) {
+      stageNameAliases = clone(json.stageNameAliases);
+      saveStageNameAliases();
+    }
     stages = clone(json.stages);
     dependencies = clone(json.dependencies || []);
     stageIdCounter = json.stageIdCounter || Math.max(100, ...stages.map((s) => parseInt(String(s.id).replace(/\D/g, ''), 10) || 0)) + 1;
     dependencyIdCounter = json.dependencyIdCounter || Math.max(100, ...dependencies.map((d) => parseInt(String(d.id).replace(/\D/g, ''), 10) || 0)) + 1;
     normalizeDependencies();
     const settings = json.settings || {};
-    setJSON(STORAGE_KEYS.workspace, { stages: clone(stages), dependencies: clone(dependencies), stageIdCounter, dependencyIdCounter, settings });
+    setJSON(STORAGE_KEYS.workspace, { stages: clone(stages), dependencies: clone(dependencies), stageNameOptions: clone(stageNameOptions), stageNameAliases: clone(stageNameAliases), stageIdCounter, dependencyIdCounter, settings });
     return settings;
   } catch (e) {
     console.warn('[preset] URL参数解析失败:', e);
