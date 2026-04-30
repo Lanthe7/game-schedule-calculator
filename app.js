@@ -224,6 +224,9 @@ function resolveStageNameAlias(name) {
   const key = String(name || '').trim();
   return stageNameAliases[key] || key;
 }
+function getDefaultStagesWithAliases() {
+  return DEFAULT_STAGES.map((stage) => ({ ...clone(stage), name: resolveStageNameAlias(stage.name) }));
+}
 function getStageNameAliasSource(name) {
   const value = String(name || '').trim();
   const pair = Object.entries(stageNameAliases).find(([, alias]) => alias === value);
@@ -289,6 +292,10 @@ function saveWorkspace() {
       settings: typeof collectSettings === 'function' ? collectSettings() : {}
     });
   }, 300);
+}
+function clearWorkspace() {
+  clearTimeout(_saveWorkspaceTimer);
+  try { localStorage.removeItem(STORAGE_KEYS.workspace); } catch {}
 }
 function loadWorkspace() {
   const ws = getJSON(STORAGE_KEYS.workspace, null);
@@ -1584,6 +1591,64 @@ function autoRunCalculation() {
   saveWorkspace();
 }
 
+function clearResultViews() {
+  lastPrimaryData = null;
+  lastCompareData = null;
+  currentViewingRecord = null;
+  ganttZoom = 1;
+  ganttZoomBwd = 1;
+  const summary = document.getElementById('summary-content');
+  const table = document.getElementById('table-content');
+  const gantt = document.getElementById('gantt-content');
+  if (summary) summary.innerHTML = '<p class="placeholder-text">👈 请在左侧配置后点击「计算排期」</p>';
+  if (table) table.innerHTML = '<p class="placeholder-text">等待计算...</p>';
+  if (gantt) gantt.innerHTML = '<p class="placeholder-text">等待计算...</p>';
+  const backwardSummary = document.getElementById('backward-summary-content');
+  const backwardTable = document.getElementById('backward-table-content');
+  const backwardGantt = document.getElementById('backward-gantt-content');
+  if (backwardSummary) backwardSummary.innerHTML = '';
+  if (backwardTable) backwardTable.innerHTML = '';
+  if (backwardGantt) backwardGantt.innerHTML = '';
+  ['backward-summary-block', 'backward-table-block', 'sec-gantt-backward'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  ['forward-summary-block', 'forward-table-block'].forEach((id) => {
+    document.getElementById(id)?.classList.add('dual-result-solo');
+  });
+  const chk = document.getElementById('chk-backward');
+  if (chk) chk.checked = false;
+  const fwdZoom = document.getElementById('fwd-zoom-level');
+  const bwdZoom = document.getElementById('bwd-zoom-level');
+  if (fwdZoom) fwdZoom.textContent = '100%';
+  if (bwdZoom) bwdZoom.textContent = '100%';
+  renderRecordViewingBanner();
+  renderSavedRecordsList();
+}
+
+function clearCurrentConfiguration() {
+  const ok = window.confirm('确定要清空当前输入配置并新建排期吗？已保存记录、标效模板和环节名称选项不会删除。');
+  if (!ok) return;
+  pushHistory();
+  stages = getDefaultStagesWithAliases();
+  dependencies = clone(DEFAULT_DEPENDENCIES);
+  stageIdCounter = 100;
+  dependencyIdCounter = 100;
+  document.querySelector('input[name="direction"][value="forward"]').checked = true;
+  document.querySelector('input[name="workday"][value="double-rest"]').checked = true;
+  document.getElementById('base-date').value = '';
+  document.getElementById('extra-days').value = '0';
+  const expectedEndInput = document.getElementById('expected-end-date');
+  if (expectedEndInput) expectedEndInput.value = '';
+  syncDirectionTexts();
+  bindCompareToggle();
+  renderAll();
+  clearResultViews();
+  hideTplHint();
+  clearWorkspace();
+  showToast('已清空当前配置');
+}
+
 /* ============ 排期结果保存/加载 ============ */
 const MAX_SAVED_RECORDS = 5;
 function getSavedRecords() { return getJSON(STORAGE_KEYS.savedRecords, []); }
@@ -1964,6 +2029,8 @@ function bindBasicEvents() {
   dateInput.value = '';
   ['click', 'focus'].forEach((t) => dateInput.addEventListener(t, function () { if (this.showPicker) try { this.showPicker(); } catch {} }));
   document.getElementById('btn-calc').addEventListener('click', runCalculation);
+  const clearConfigBtn = document.getElementById('btn-clear-config');
+  if (clearConfigBtn) clearConfigBtn.addEventListener('click', clearCurrentConfiguration);
   // 分界引导icon也支持点击触发计算
   const dividerCalcBtn = document.getElementById('divider-calc-btn');
   if (dividerCalcBtn) dividerCalcBtn.addEventListener('click', runCalculation);
@@ -2313,6 +2380,10 @@ function init() {
   const presetSettings = loadPresetFromURL();
   // 恢复上次保存的工作区状态
   const savedSettings = presetSettings || loadWorkspace();
+  if (!savedSettings) {
+    stages = getDefaultStagesWithAliases();
+    dependencies = clone(DEFAULT_DEPENDENCIES);
+  }
   renderAll(); renderStageNameDropdown('');
   bindBasicEvents(); bindStageModal(); bindTemplateActions(); bindFileImports(); bindRecordActions();
   if (savedSettings) {

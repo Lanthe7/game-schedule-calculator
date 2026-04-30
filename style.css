@@ -191,6 +191,18 @@ body {
   box-shadow: 0 3px 12px rgba(245, 158, 11, 0.35);
 }
 
+.btn-clear-config {
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.btn-clear-config:hover {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #fed7aa;
+}
+
 /* 查看记录提示横幅 */
 .record-viewing-banner {
   display: flex;
@@ -2538,4 +2550,3 @@ select:focus {
     width: 100%;
   }
 }
-
